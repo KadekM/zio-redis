@@ -2,7 +2,7 @@ package zio.redis
 
 import zio._
 import zio.logging._
-import zio.stm.{STM, TSet}
+import zio.stm.{STM, TRef, TSet}
 import zio.stream.{Stream, ZStream}
 
 object RedisExecutor {
@@ -26,14 +26,22 @@ object RedisExecutor {
 
   private[this] final val RequestQueueSize = 16
 
+  sealed trait Mode
+  object Mode {
+    case object ReqResp extends Mode
+    case object Streaming extends Mode
+  }
+
   private[this] final val StreamedExecutor =
     ZLayer.fromServicesManaged[ByteStream.Service, Logger[String], Any, RedisError.IOError, RedisExecutor.Service] {
       (byteStream: ByteStream.Service, logging: Logger[String]) =>
         for {
           reqQueue <- Queue.bounded[Request](RequestQueueSize).toManaged_
           resQueue <- Queue.unbounded[Promise[RedisError, RespValue]].toManaged_
+          mode <- TRef.makeCommit[Mode](Mode.ReqResp).toManaged_
           subs     <- TSet.empty[RespValue.BulkString].commit.toManaged_
-          live      = new Live(reqQueue, resQueue, subs, byteStream, logging)
+          subsRes <- Queue.unbounded[RespValue].toManaged_
+          live      = new Live(reqQueue, resQueue, mode, subs, subsRes, byteStream, logging)
           _        <- live.run.forkManaged
         } yield live
     }
@@ -41,7 +49,9 @@ object RedisExecutor {
   private[this] final class Live(
     reqQueue: Queue[Request],
     resQueue: Queue[Promise[RedisError, RespValue]],
+    mode: TRef[Mode],
     subs: TSet[RespValue.BulkString],
+    subsResQueue: Queue[RespValue],
     byteStream: ByteStream.Service,
     logger: Logger[String]
   ) extends Service {
@@ -54,10 +64,9 @@ object RedisExecutor {
 
         _       <- ZStream.fromEffect(STM.foreach(channels)(subs.put).commit)
         _ = println("waiting")
-        res     <- ZStream.fromQueue(resQueue)
+        res     <- ZStream.fromQueue(subsResQueue)
           .tap(x => ZIO.effectTotal(println(x)))
-          .flatMap(v => ZStream.fromEffect(v.await))
-          //.takeUntilM(_ => subs.isEmpty.commit)
+          .takeUntilM(_ => subs.isEmpty.commit)
       } yield res
     }
 
@@ -105,7 +114,12 @@ object RedisExecutor {
         .mapError(RedisError.IOError)
         .transduce(RespValue.Decoder)
         .tap(x => ZIO.effectTotal(println(s"received! $x")))
-        .foreach(response => resQueue.take.flatMap(_.succeed(response)))
+        .foreach{response =>
+          mode.get.commit.flatMap {
+            case Mode.ReqResp => resQueue.take.flatMap(_.succeed(response))
+            case Mode.Streaming => subsResQueue.offer(response)
+          }
+        }
 
   }
 }
