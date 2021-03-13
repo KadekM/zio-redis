@@ -2,10 +2,13 @@ package zio.redis
 
 import zio._
 import zio.logging._
+import zio.stream.ZStream
 
 object RedisExecutor {
   trait Service {
     def execute(command: Chunk[RespValue.BulkString]): IO[RedisError, RespValue]
+
+    def stream(command: Chunk[RespValue.BulkString]): ZStream[Any, RedisError, RespValue]
   }
 
   lazy val live: ZLayer[Logging with Has[RedisConfig], RedisError.IOError, RedisExecutor] =
@@ -39,6 +42,8 @@ object RedisExecutor {
     byteStream: ByteStream.Service,
     logger: Logger[String]
   ) extends Service {
+
+    def stream(command: Chunk[RespValue.BulkString]): ZStream[Any, RedisError, RespValue] = ???
 
     def execute(command: Chunk[RespValue.BulkString]): IO[RedisError, RespValue] =
       Promise

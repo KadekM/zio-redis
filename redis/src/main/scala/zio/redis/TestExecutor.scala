@@ -1,11 +1,11 @@
 package zio.redis
 
 import scala.collection.compat.immutable.LazyList
-
 import zio._
 import zio.redis.RedisError.ProtocolError
 import zio.redis.RespValue.BulkString
-import zio.stm.{ STM, TMap, TRef, USTM }
+import zio.stm.{STM, TMap, TRef, USTM}
+import zio.stream.ZStream
 
 private[redis] final class TestExecutor private (
   sets: TMap[String, Set[String]],
@@ -394,6 +394,7 @@ private[redis] final class TestExecutor private (
     val EmptyArray: RespValue.Array = RespValue.array()
   }
 
+  override def stream(command: Chunk[BulkString]): ZStream[Any, RedisError, RespValue] = ??? // todo
 }
 
 private[redis] object TestExecutor {
