@@ -394,7 +394,7 @@ private[redis] final class TestExecutor private (
     val EmptyArray: RespValue.Array = RespValue.array()
   }
 
-  override def stream(command: Chunk[BulkString]): ZStream[Any, RedisError, RespValue] = ??? // todo
+  override def subscribe(command: Chunk[BulkString], channels: Chunk[BulkString]): ZStream[Any, RedisError, RespValue] = ???
 }
 
 private[redis] object TestExecutor {

@@ -199,6 +199,10 @@ object Input {
     def encode(data: String): Chunk[RespValue.BulkString] = Chunk.single(encodeString(data))
   }
 
+  case object PublishInput extends Input[RespValue] {
+    def encode(data: RespValue): Chunk[RespValue.BulkString] = Chunk.single(RespValue.BulkString(data.serialize))
+  }
+
   case object ByteInput extends Input[Chunk[Byte]] {
     private[redis] def encode(data: Chunk[Byte]) = Chunk.single(RespValue.BulkString(data))
   }

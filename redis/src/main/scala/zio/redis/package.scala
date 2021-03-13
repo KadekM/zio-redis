@@ -11,6 +11,7 @@ package object redis
     with api.Strings
     with api.SortedSets
     with api.Streams
+    with api.PubSub
     with options.Geo
     with options.Keys
     with options.Shared

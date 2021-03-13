@@ -129,6 +129,10 @@ object Output {
       }
   }
 
+  case object SubscribeOutput extends Output[RespValue] {
+    protected def tryDecode(respValue: RespValue): RespValue = respValue
+  }
+
   case object MultiStringOutput extends Output[String] {
     protected def tryDecode(respValue: RespValue): String =
       respValue match {

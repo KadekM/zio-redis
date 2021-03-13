@@ -2,13 +2,14 @@ package zio.redis
 
 import zio._
 import zio.logging._
-import zio.stream.ZStream
+import zio.stm.{STM, TSet}
+import zio.stream.{Stream, ZStream}
 
 object RedisExecutor {
   trait Service {
     def execute(command: Chunk[RespValue.BulkString]): IO[RedisError, RespValue]
 
-    def stream(command: Chunk[RespValue.BulkString]): ZStream[Any, RedisError, RespValue]
+    def subscribe(command: Chunk[RespValue.BulkString], channels: Chunk[RespValue.BulkString]): ZStream[Any, RedisError, RespValue]
   }
 
   lazy val live: ZLayer[Logging with Has[RedisConfig], RedisError.IOError, RedisExecutor] =
@@ -31,7 +32,8 @@ object RedisExecutor {
         for {
           reqQueue <- Queue.bounded[Request](RequestQueueSize).toManaged_
           resQueue <- Queue.unbounded[Promise[RedisError, RespValue]].toManaged_
-          live      = new Live(reqQueue, resQueue, byteStream, logging)
+          subs     <- TSet.empty[RespValue.BulkString].commit.toManaged_
+          live      = new Live(reqQueue, resQueue, subs, byteStream, logging)
           _        <- live.run.forkManaged
         } yield live
     }
@@ -39,11 +41,21 @@ object RedisExecutor {
   private[this] final class Live(
     reqQueue: Queue[Request],
     resQueue: Queue[Promise[RedisError, RespValue]],
+    subs: TSet[RespValue.BulkString],
     byteStream: ByteStream.Service,
     logger: Logger[String]
   ) extends Service {
 
-    def stream(command: Chunk[RespValue.BulkString]): ZStream[Any, RedisError, RespValue] = ???
+    def subscribe(command: Chunk[RespValue.BulkString], channels: Chunk[RespValue.BulkString]): Stream[RedisError, RespValue] = {
+      for {
+        promise <- ZStream.fromEffect(Promise.make[RedisError, RespValue])
+        _       <- ZStream.fromEffect(reqQueue.offer(Request(command ++ channels, promise)))
+        _       <- ZStream.fromEffect(promise.await)
+        _       <- ZStream.fromEffect(STM.foreach(channels)(subs.put).commit)
+        res     <- ZStream.fromQueue(resQueue).flatMap(v => ZStream.fromEffect(v.await))
+          .takeUntilM(_ => subs.isEmpty.commit)
+      } yield res
+    }
 
     def execute(command: Chunk[RespValue.BulkString]): IO[RedisError, RespValue] =
       Promise
