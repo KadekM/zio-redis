@@ -9,14 +9,20 @@ trait PubSubSpec extends BaseSpec {
     suite("pubSub")(
       suite("subscribe")(
         testM("subscribe follow by multiple values") {
-          val channel   = "channel_1"
-          val msg       = RespValue.SimpleString("msg_1")
+          val channel   = "channel"
+          //val msg       = "msg"
 
           for {
-            _ <- subscribe(channel).tap(x => ZIO.effectTotal(println(x))).runDrain.fork
-            _ = println("publishing")
-            _   <- publish(channel, msg)
-            _ = println("published")
+            _ <- subscribe(channel)
+              .tap(x => ZIO.effectTotal(println(x)))
+              .runDrain
+              .fork
+            _ = println("ready")
+            //_   <- publish(channel, msg)
+            //_   <- publish(channel, msg)
+            //_   <- publish(channel, msg)
+            //_ = println("published")
+            _ <- ZIO.effectTotal(Thread.sleep(20000))
           } yield assertCompletes
         }
       )

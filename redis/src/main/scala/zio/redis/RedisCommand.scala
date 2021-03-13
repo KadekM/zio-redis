@@ -24,7 +24,7 @@ object RedisCommand {
 
 final class RedisSubCommand[-In] private (val name: String, val input: Input[In]) extends RedisCommandLike[In] {
   val output = StringOutput
-  private[redis] def stream(in: In): ZStream[RedisExecutor, RedisError, String] = { // todo
+  private[redis] def subscribe(in: In): ZStream[RedisExecutor, RedisError, String] = { // todo
     ZStream.accessStream[RedisExecutor](_.get.subscribe(Input.StringInput.encode(name), input.encode(in)))
       .flatMap(out => ZStream.fromEffect(ZIO.effect(output.unsafeDecode(out))))
       .refineToOrDie[RedisError]
