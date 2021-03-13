@@ -62,7 +62,10 @@ object RedisExecutor {
         _       <- ZStream.fromEffect(reqQueue.offer(Request(command ++ channels, promise)))
         _       <- ZStream.fromEffect(promise.await)
 
-        _       <- ZStream.fromEffect(STM.foreach(channels)(subs.put).commit)
+        _       <- ZStream.fromEffect(
+          (mode.update(_ => Mode.Streaming) *>
+          STM.foreach(channels)(subs.put)).commit
+        )
         _ = println("waiting")
         res     <- ZStream.fromQueue(subsResQueue)
           .tap(x => ZIO.effectTotal(println(x)))
@@ -113,7 +116,6 @@ object RedisExecutor {
       byteStream.read
         .mapError(RedisError.IOError)
         .transduce(RespValue.Decoder)
-        .tap(x => ZIO.effectTotal(println(s"received! $x")))
         .foreach{response =>
           mode.get.commit.flatMap {
             case Mode.ReqResp => resQueue.take.flatMap(_.succeed(response))
